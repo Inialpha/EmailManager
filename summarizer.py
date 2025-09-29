@@ -4,29 +4,12 @@ Email summarization using LangChain LLMs.
 import os
 import logging
 from typing import List, Dict, Optional
-from langchain.schema import HumanMessage
-from langchain.llms.base import BaseLLM
 
 from groq import Groq
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class EmailSummarizer:
-    """Handles email summarization using the Groq API directly (no LangChain)."""
-
-    def __init__(self):
-        self.groq_key = os.getenv("GROQ_API_KEY")
-        if not self.groq_key:
-            logger.error("GROQ_API_KEY not found in environment variables.")
-            self.client = None
-        else:
-            try:
-                self.client = Groq(api_key=self.groq_key)
-                logger.info("✅ Groq client initialized successfully.")
-            except Exception as e:
-                logger.error(f"Failed to initialize Groq client: {e}")
-                self.client = None
 
 import json
 from groq import Groq
