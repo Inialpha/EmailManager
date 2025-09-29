@@ -35,9 +35,10 @@ scheduler = AsyncIOScheduler()
 
 # Pydantic models for API
 class EmailRequest(BaseModel):
-    to_email: EmailStr
+    name: str
+    email: EmailStr
     subject: str
-    body: str
+    message: str
 
 class EmailResponse(BaseModel):
     success: bool
@@ -151,17 +152,19 @@ async def send_email(email_request: EmailRequest) -> EmailResponse:
         EmailResponse: Success/failure response
     """
     try:
-        logger.info(f"Received email request to {email_request.to_email}")
+        logger.info(f"Received email  from {email_request.email}")
         
         # Send email using template
         result = email_sender.send_email(
-            to_email=str(email_request.to_email),
+            to_email="inimfonebong001@gmail.com",
             subject=email_request.subject,
-            body="",  # Will be replaced by template
+            body="",
             template_name="email_template.html",
             template_vars={
                 "subject": email_request.subject,
-                "body": email_request.body
+                "message": email_request.message,
+                "email": email_request.email,
+                "name": email_request.name,
             }
         )
         
