@@ -1,24 +1,25 @@
 """
 Email utility functions for sending emails using SMTP.
 """
-import smtplib
+import smtplib, ssl
 import logging
 import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
 from jinja2 import Environment, FileSystemLoader
+from dotenv import load_dotenv
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+load_dotenv()
 class EmailSender:
     """Handles email sending functionality using SMTP."""
     
     def __init__(self):
         self.smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
-        self.smtp_port = int(os.getenv('SMTP_PORT', '587'))
+        self.smtp_port = int(os.getenv('SMTP_PORT', "465"))
         self.email_address = os.getenv('EMAIL_ADDRESS')
         self.email_password = os.getenv('EMAIL_PASSWORD')
         
@@ -82,8 +83,8 @@ class EmailSender:
                 msg.attach(MIMEText(body, 'plain'))
             
             # Send email
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.starttls()
+            with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port) as server:
+                #server.starttls()
                 server.login(self.email_address, self.email_password)
                 server.send_message(msg)
             
@@ -132,6 +133,4 @@ class EmailSender:
             template_vars=report_data
         )
 
-
-# Global email sender instance
 email_sender = EmailSender()

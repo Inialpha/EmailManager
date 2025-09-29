@@ -4,7 +4,7 @@ Main application with API endpoints and scheduled tasks.
 """
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any
 from contextlib import asynccontextmanager
 
@@ -15,6 +15,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
 
 # Import our custom modules
+from mail_utils.sender import gmail_manager
 from email_utils import email_sender
 from gmail_utils import gmail_fetcher
 from summarizer import email_summarizer
@@ -67,8 +68,8 @@ async def lifespan(app: FastAPI):
         logger.info("Debug mode - scheduling initial report in 1 minute")
         scheduler.add_job(
             func=daily_email_report,
-            trigger="interval",
-            seconds=60,
+            trigger="date",
+            run_date=datetime.now() + timedelta(seconds=10),
             id="initial_report",
             max_instances=1
         )
@@ -200,18 +201,14 @@ async def daily_email_report():
         
         # Fetch recent emails from Gmail
         logger.info("Fetching emails from Gmail...")
-        emails = gmail_fetcher.fetch_recent_emails(hours=24)
+        emails = gmail_manager.fetch_recent_emails(hours=24)
         
         if not emails:
             logger.info("No emails found in the last 24 hours")
-            # Still send a report indicating no emails
             summaries = []
         else:
             logger.info(f"Found {len(emails)} emails, starting summarization...")
-            # Summarize emails using LLM
             summaries = email_summarizer.summarize_emails_batch(emails)
-        
-        # Prepare report data
         report_data = {
             "date": datetime.utcnow().strftime("%B %d, %Y"),
             "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
@@ -219,7 +216,6 @@ async def daily_email_report():
             "summaries": summaries
         }
         
-        # Send report email
         report_recipient = os.getenv('REPORT_RECIPIENT_EMAIL')
         if not report_recipient:
             logger.error("REPORT_RECIPIENT_EMAIL not configured")

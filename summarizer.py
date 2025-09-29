@@ -7,101 +7,122 @@ from typing import List, Dict, Optional
 from langchain.schema import HumanMessage
 from langchain.llms.base import BaseLLM
 
-# Set up logging
+from groq import Groq
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class EmailSummarizer:
-    """Handles email summarization using LangChain LLMs."""
-    
+    """Handles email summarization using the Groq API directly (no LangChain)."""
+
     def __init__(self):
-        self.llm = None
-        self._initialize_llm()
-    
-    def _initialize_llm(self) -> None:
-        """Initialize the LLM based on available API keys."""
-        openai_key = os.getenv('OPENAI_API_KEY')
-        groq_key = os.getenv('GROQ_API_KEY')
-        
-        if openai_key:
+        self.groq_key = os.getenv("GROQ_API_KEY")
+        if not self.groq_key:
+            logger.error("GROQ_API_KEY not found in environment variables.")
+            self.client = None
+        else:
             try:
-                from langchain_openai import ChatOpenAI
-                self.llm = ChatOpenAI(
-                    model="gpt-3.5-turbo",
-                    temperature=0.3,
-                    api_key=openai_key
-                )
-                logger.info("Initialized OpenAI LLM")
-                return
-            except ImportError:
-                logger.warning("OpenAI package not available, trying Groq")
+                self.client = Groq(api_key=self.groq_key)
+                logger.info("✅ Groq client initialized successfully.")
             except Exception as e:
-                logger.error(f"Error initializing OpenAI LLM: {e}")
-        
-        if groq_key:
+                logger.error(f"Failed to initialize Groq client: {e}")
+                self.client = None
+
+import json
+from groq import Groq
+
+
+class EmailSummarizer:
+    """Summarizes emails using Groq LLM and returns structured JSON."""
+
+    def __init__(self):
+        self.groq_key = os.getenv("GROQ_API_KEY")
+        if not self.groq_key:
+            logger.error("GROQ_API_KEY not found in environment variables.")
+            self.client = None
+        else:
             try:
-                from langchain_groq import ChatGroq
-                self.llm = ChatGroq(
-                    model="mixtral-8x7b-32768",
-                    temperature=0.3,
-                    groq_api_key=groq_key
-                )
-                logger.info("Initialized Groq LLM")
-                return
-            except ImportError:
-                logger.warning("Groq package not available")
+                self.client = Groq(api_key=self.groq_key)
+                logger.info("✅ Groq client initialized successfully.")
             except Exception as e:
-                logger.error(f"Error initializing Groq LLM: {e}")
-        
-        logger.error("No LLM could be initialized. Please check your API keys.")
-    
-    def summarize_email(self, subject: str, content: str) -> str:
+                logger.error(f"Failed to initialize Groq client: {e}")
+                self.client = None
+
+    def summarize_email(self, subject: str, content: str) -> dict:
         """
-        Summarize a single email using the LLM.
-        
+        Summarize a single email using the Groq LLM.
+
         Args:
             subject: Email subject line
             content: Email content/snippet
-            
+
         Returns:
-            str: Summarized email content
+            dict: { "subject": <subject>, "summary": <summary> }
         """
-        if not self.llm:
-            logger.warning("No LLM available for summarization")
-            return f"Unable to summarize - LLM not available. Original content: {content[:200]}..."
-        
+        if not self.client:
+            logger.warning("No Groq client available for summarization.")
+            return {
+                "subject": "No Subject",
+                "summary": f"⚠️ Unable to summarize. Original content: {content[:200]}..."
+            }
+
         try:
-            # Create a prompt for summarization
             prompt = f"""
-            Please provide a concise summary of the following email in 2-3 sentences.
-            Focus on the main purpose, key information, and any action items.
-            
-            Subject: {subject}
-            Content: {content}
-            
-            Summary:
-            """
-            
-            # Use the LLM to generate summary
-            if hasattr(self.llm, 'invoke'):
-                # For newer LangChain versions
-                response = self.llm.invoke([HumanMessage(content=prompt)])
-                summary = response.content.strip()
-            else:
-                # For older versions
-                summary = self.llm(prompt).strip()
-            
-            # Clean up the summary
-            summary = summary.replace("Summary:", "").strip()
-            
-            logger.info(f"Generated summary for email: {subject[:50]}...")
-            return summary
-            
+You will receive the content of an email.
+Your task is to provide a concise 3–6 sentence summary focusing on the main purpose, key points, and any action items.
+
+Return ONLY a valid JSON object with the following structure:
+{{
+  "subject": "<email subject>",
+  "summary": "<summary text>"
+}}
+
+Make sure the response is a valid JSON — no extra text or explanation.
+
+Content: {content}
+"""
+
+            response = self.client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a helpful personal assistant that summarizes emails into concise structured JSON."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.3,
+                max_completion_tokens=300
+            )
+
+            raw_output = response.choices[0].message.content.strip()
+
+            try:
+                result = json.loads(raw_output)
+                logger.info(f"🧠 Summary generated for: {subject[:50]}...")
+                return result
+            except json.JSONDecodeError:
+                logger.warning("Model response was not valid JSON. Returning fallback.")
+                return {"subject": "No subject", "summary": raw_output}
+
         except Exception as e:
+            raise e
             logger.error(f"Error summarizing email: {e}")
-            # Fallback to truncated original content
-            return f"Summarization failed. Original content: {content[:200]}..."
-    
+            return {
+                "subject": "No subject",
+                "summary": f"⚠️ Summarization failed. Original content: {content[:200]}..."
+            }
+
+
+
+
+
+
+
+
     def summarize_emails_batch(self, emails: List[Dict]) -> List[Dict]:
         """
         Summarize a batch of emails.
@@ -129,11 +150,12 @@ class EmailSummarizer:
                 summary = self.summarize_email(subject, content)
                 
                 summaries.append({
-                    'subject': subject,
-                    'summary': summary
+                    'subject': summary.get("subject"),
+                    'summary': summary.get("summary", "") 
                 })
                 
             except Exception as e:
+                raise e
                 logger.error(f"Error processing email {i}: {e}")
                 # Add a fallback entry
                 summaries.append({
