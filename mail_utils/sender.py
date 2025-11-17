@@ -30,6 +30,18 @@ class GmailManager:
         if not self.email or not self.app_password:
             raise ValueError("Missing GMAIL_USER or GMAIL_APP_PASSWORD environment variables")
 
+    def set_credentials(self, email: str, app_password: str):
+        """
+        Set Gmail credentials dynamically.
+        
+        Args:
+            email: Gmail address
+            app_password: App password for the Gmail account
+        """
+        self.email = email
+        self.app_password = app_password
+        logger.info(f"Gmail credentials updated for {email}")
+
     def fetch_recent_emails(self, hours: int = 24) -> List[Dict]:
         """
         Fetch emails from the last N hours using IMAP.

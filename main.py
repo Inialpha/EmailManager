@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
     
     # Schedule the daily email fetcher
     scheduler.add_job(
-        func=daily_email_report_for_multiple_recipients(),
+        func=daily_email_report_for_multiple_recipients,
         trigger="interval",
         hours=24,
         id="daily_email_report",
@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI):
     if os.getenv('DEBUG') == 'True':
         logger.info("Debug mode - scheduling initial report in 1 minute")
         scheduler.add_job(
-            func=daily_email_report_for_multiple_recipients(),
+            func=daily_email_report_for_multiple_recipients,
             trigger="date",
             run_date=datetime.now() + timedelta(seconds=10),
             id="initial_report",
@@ -195,13 +195,20 @@ async def trigger_manual_report() -> Dict[str, Any]:
         logger.error(f"Error triggering manual report: {e}")
         raise HTTPException(status_code=500, detail=f"Error triggering report: {str(e)}")
 
-async def daily_email_report():
+async def daily_email_report(recipient_email: str, email_password: str):
     """
     Scheduled function to fetch emails, summarize them, and send a report.
-    This runs every 24 hours automatically.
+    
+    Args:
+        recipient_email: Email address to send the report to (also used for fetching emails)
+        email_password: Password/app password for the email account
     """
     try:
-        logger.info("Starting daily email report generation...")
+        logger.info(f"Starting daily email report generation for {recipient_email}...")
+        
+        # Set credentials for email sender and Gmail manager
+        email_sender.set_credentials(recipient_email, email_password)
+        gmail_manager.set_credentials(recipient_email, email_password)
         
         # Fetch recent emails from Gmail
         logger.info("Fetching emails from Gmail...")
@@ -220,30 +227,32 @@ async def daily_email_report():
             "summaries": summaries
         }
         
-        report_recipient = os.getenv('REPORT_RECIPIENT_EMAIL')
-        if not report_recipient:
-            logger.error("REPORT_RECIPIENT_EMAIL not configured")
-            return
-        
-        logger.info(f"Sending report to {report_recipient}")
-        result = email_sender.send_html_report(report_recipient, report_data)
+        logger.info(f"Sending report to {recipient_email}")
+        result = email_sender.send_html_report(recipient_email, report_data)
         
         if result["success"]:
-            logger.info("Daily email report sent successfully")
+            logger.info(f"Daily email report sent successfully to {recipient_email}")
         else:
-            logger.error(f"Failed to send daily report: {result['message']}")
+            logger.error(f"Failed to send daily report to {recipient_email}: {result['message']}")
             
     except Exception as e:
-        logger.error(f"Error in daily_email_report: {e}")
+        logger.error(f"Error in daily_email_report for {recipient_email}: {e}")
 
 async def daily_email_report_for_multiple_recipients():
+    """
+    Send daily email reports to multiple recipients.
+    Each recipient gets their own report using their individual credentials.
+    """
     recipients = ["inimfonebong001@gmail.com"] #"ebonginimfon8@gmail.com", "inimfonebong2023@gmail.com"
     for recipient in recipients:
-        username = recipient.split("@")[0]
-        os.environ["REPORT_RECIPIENT_EMAIL"] = recipient
-        os.environ["EMAIL_ADDRESS"] = recipient
-        os.environ["EMAIL_PASSWORD"] = os.getenv(f"{username.upper()}_PASSWORD")
-        await daily_email_report()
+        username = recipient.split("@")[0].upper()
+        password = os.getenv(f"{username}_PASSWORD")
+        
+        if not password:
+            logger.error(f"No password found for {recipient} (env var: {username}_PASSWORD). Skipping.")
+            continue
+        
+        await daily_email_report(recipient, password)
 
 if __name__ == "__main__":
     import uvicorn
