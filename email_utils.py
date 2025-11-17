@@ -39,6 +39,18 @@ class EmailSender:
         if not self.email_address or not self.email_password:
             logger.warning("Email credentials not found in environment variables")
     
+    def set_credentials(self, email_address: str, email_password: str):
+        """
+        Set email credentials dynamically.
+        
+        Args:
+            email_address: Email address to use for sending
+            email_password: Password/app password for the email account
+        """
+        self.email_address = email_address
+        self.email_password = email_password
+        logger.info(f"Email credentials updated for {email_address}")
+    
     def send_email(
         self, 
         to_email: str, 
