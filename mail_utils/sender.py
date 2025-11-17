@@ -52,7 +52,7 @@ class GmailManager:
                 )
 
                 for msg in messages:
-                    snippet = (msg.text or msg.html or "")[:120].replace("\n", " ")
+                    snippet = msg.text or msg.html or ""
                     emails.append({
                         "subject": msg.subject or "No Subject",
                         "snippet": snippet,

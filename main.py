@@ -23,6 +23,7 @@ from summarizer import email_summarizer
 # Load environment variables
 load_dotenv()
 
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -55,7 +56,7 @@ async def lifespan(app: FastAPI):
     
     # Schedule the daily email fetcher
     scheduler.add_job(
-        func=daily_email_report,
+        func=daily_email_report_for_multiple_recipients(),
         trigger="interval",
         hours=24,
         id="daily_email_report",
@@ -68,7 +69,7 @@ async def lifespan(app: FastAPI):
     if os.getenv('DEBUG') == 'True':
         logger.info("Debug mode - scheduling initial report in 1 minute")
         scheduler.add_job(
-            func=daily_email_report,
+            func=daily_email_report_for_multiple_recipients(),
             trigger="date",
             run_date=datetime.now() + timedelta(seconds=10),
             id="initial_report",
@@ -92,7 +93,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -185,7 +186,7 @@ async def trigger_manual_report() -> Dict[str, Any]:
     """
     try:
         logger.info("Manual report trigger requested")
-        await daily_email_report()
+        await daily_email_report_for_multiple_recipients()
         return {
             "success": True,
             "message": "Report generation triggered successfully"
@@ -211,7 +212,7 @@ async def daily_email_report():
             summaries = []
         else:
             logger.info(f"Found {len(emails)} emails, starting summarization...")
-            summaries = email_summarizer.summarize_emails_batch(emails)
+            summaries = email_summarizer.summarize_emails_batch(emails[:2])
         report_data = {
             "date": datetime.utcnow().strftime("%B %d, %Y"),
             "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
@@ -234,6 +235,15 @@ async def daily_email_report():
             
     except Exception as e:
         logger.error(f"Error in daily_email_report: {e}")
+
+async def daily_email_report_for_multiple_recipients():
+    recipients = ["inimfonebong001@gmail.com"] #"ebonginimfon8@gmail.com", "inimfonebong2023@gmail.com"
+    for recipient in recipients:
+        username = recipient.split("@")[0]
+        os.environ["REPORT_RECIPIENT_EMAIL"] = recipient
+        os.environ["EMAIL_ADDRESS"] = recipient
+        os.environ["EMAIL_PASSWORD"] = os.getenv(f"{username.upper()}_PASSWORD")
+        await daily_email_report()
 
 if __name__ == "__main__":
     import uvicorn

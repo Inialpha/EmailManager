@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 
 import json
-from groq import Groq
 
 
 class EmailSummarizer:

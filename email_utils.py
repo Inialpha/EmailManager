@@ -1,6 +1,7 @@
 """
 Email utility functions for sending emails using SMTP.
 """
+from __future__ import print_function
 import smtplib, ssl
 import logging
 import os
@@ -8,6 +9,11 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
 from jinja2 import Environment, FileSystemLoader
+import time
+import brevo_python
+from brevo_python.rest import ApiException
+from pprint import pprint
+
 from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO)
@@ -22,6 +28,7 @@ class EmailSender:
         self.smtp_port = int(os.getenv('SMTP_PORT', "465"))
         self.email_address = os.getenv('EMAIL_ADDRESS')
         self.email_password = os.getenv('EMAIL_PASSWORD')
+        self.BREVO_API_KEY = os.getenv("BREVO_API_KEY")
         
         # Set up Jinja2 environment for templates
         self.template_env = Environment(
@@ -83,6 +90,13 @@ class EmailSender:
                 msg.attach(MIMEText(body, 'plain'))
             
             # Send email
+            self.brevo(to_email, subject, body, is_html)
+            logger.info(f"Email sent successfully to {to_email} using brevo")
+            return {
+                "success": True,
+                "message": f"Email sent successfully to {to_email}"
+            }
+
             with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port) as server:
                 #server.starttls()
                 server.login(self.email_address, self.email_password)
@@ -132,5 +146,30 @@ class EmailSender:
             template_name="summary_report.html",
             template_vars=report_data
         )
+    def brevo(self,
+        to_email: str,
+        subject: str,
+        body: str,
+        is_html: bool = False,
+    ):
+
+        configuration = brevo_python.Configuration()
+        configuration.api_key['api-key'] = self.BREVO_API_KEY
+
+        api_instance = brevo_python.TransactionalEmailsApi(brevo_python.ApiClient(configuration))
+        subject = subject
+        sender = {"name": "Inimfon Ebong", "email": self.email_address}
+        html_content = body 
+        to = [{"email": to_email, "name": "Inimfon Ebong"}]
+        send_smtp_email = brevo_python.SendSmtpEmail(
+            to=to,
+            html_content=html_content,
+            sender=sender, subject=subject
+        )
+
+        try:
+            api_response = api_instance.send_transac_email(send_smtp_email)
+        except ApiException as e:
+            print("Exception when calling TransactionalEmailsApi->send_transac_email: %s\n" % e)
 
 email_sender = EmailSender()
