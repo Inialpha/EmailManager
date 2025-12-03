@@ -186,7 +186,7 @@ async def trigger_manual_report() -> Dict[str, Any]:
     """
     try:
         logger.info("Manual report trigger requested")
-        await daily_email_report_for_multiple_recipients()
+        await daily_email_report_for_multiple_recipients
         return {
             "success": True,
             "message": "Report generation triggered successfully"
@@ -219,7 +219,7 @@ async def daily_email_report(recipient_email: str, email_password: str):
             summaries = []
         else:
             logger.info(f"Found {len(emails)} emails, starting summarization...")
-            summaries = email_summarizer.summarize_emails_batch(emails[:2])
+            summaries = email_summarizer.summarize_emails_batch(emails)
         report_data = {
             "date": datetime.utcnow().strftime("%B %d, %Y"),
             "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
@@ -243,7 +243,7 @@ async def daily_email_report_for_multiple_recipients():
     Send daily email reports to multiple recipients.
     Each recipient gets their own report using their individual credentials.
     """
-    recipients = ["inimfonebong001@gmail.com"] #"ebonginimfon8@gmail.com", "inimfonebong2023@gmail.com"
+    recipients = ["inimfonebong001@gmail.com", "ebonginimfon8@gmail.com"] #"inimfonebong2023@gmail.com"
     for recipient in recipients:
         username = recipient.split("@")[0].upper()
         password = os.getenv(f"{username}_PASSWORD")

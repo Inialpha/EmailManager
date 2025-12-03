@@ -21,14 +21,9 @@ class GmailManager:
     """Handles Gmail operations for fetching and sending emails via IMAP/SMTP."""
 
     def __init__(self):
-        self.email = os.getenv("EMAIL_ADDRESS")
-        self.app_password = os.getenv("EMAIL_PASSWORD")
         self.imap_server = "imap.gmail.com"
         self.smtp_server = "smtp.gmail.com"
         self.smtp_port = 465
-
-        if not self.email or not self.app_password:
-            raise ValueError("Missing GMAIL_USER or GMAIL_APP_PASSWORD environment variables")
 
     def set_credentials(self, email: str, app_password: str):
         """
@@ -64,6 +59,8 @@ class GmailManager:
                 )
 
                 for msg in messages:
+                    if msg.from_ == "inimfonebong001@gmail.com":
+                        continue
                     snippet = msg.text or msg.html or ""
                     emails.append({
                         "subject": msg.subject or "No Subject",

@@ -6,6 +6,7 @@ import logging
 from typing import List, Dict, Optional
 
 from groq import Groq
+import time
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -135,7 +136,7 @@ Content: {content}
                     'subject': summary.get("subject"),
                     'summary': summary.get("summary", "") 
                 })
-                
+                time.sleep(5)
             except Exception as e:
                 raise e
                 logger.error(f"Error processing email {i}: {e}")

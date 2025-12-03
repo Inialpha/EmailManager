@@ -170,7 +170,7 @@ class EmailSender:
 
         api_instance = brevo_python.TransactionalEmailsApi(brevo_python.ApiClient(configuration))
         subject = subject
-        sender = {"name": "Inimfon Ebong", "email": self.email_address}
+        sender = {"name": "Inimfon Ebong", "email": "inimfonebong001@gmail.com"}
         html_content = body 
         to = [{"email": to_email, "name": "Inimfon Ebong"}]
         send_smtp_email = brevo_python.SendSmtpEmail(
