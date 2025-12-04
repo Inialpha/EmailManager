@@ -178,7 +178,7 @@ async def send_email(email_request: EmailRequest) -> EmailResponse:
         logger.error(f"Error in send_email endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-@app.post("/trigger-report/")
+@app.get("/trigger-report/")
 async def trigger_manual_report() -> Dict[str, Any]:
     """
     Manually trigger the daily email report.
@@ -186,7 +186,7 @@ async def trigger_manual_report() -> Dict[str, Any]:
     """
     try:
         logger.info("Manual report trigger requested")
-        await daily_email_report_for_multiple_recipients
+        await daily_email_report_for_multiple_recipients()
         return {
             "success": True,
             "message": "Report generation triggered successfully"
