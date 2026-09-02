@@ -27,7 +27,11 @@ class EmailInsightExtractor:
         except Exception as exc:
             logger.error("Failed to initialize Groq client: %s", exc)
 
-    def extract_insights(self, email: Dict[str, Any]) -> Dict[str, Any]:
+    def extract_insights(
+        self,
+        email: Dict[str, Any],
+        current_datetime: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Analyze exactly one email and return structured Executive AI insights."""
         if not self.client:
             raise RuntimeError("Groq client is not available")
@@ -37,10 +41,19 @@ class EmailInsightExtractor:
         sender = email.get("sender")
         subject = email.get("subject") or "No Subject"
         content = email.get("content", email.get("snippet", ""))
+        reference_datetime = current_datetime or "Not provided"
 
         prompt = f"""
 You are Executive AI, a personal executive assistant.
 Analyze the following single email and identify information that can help the user understand, decide, remember, and act.
+
+CURRENT DATE/TIME REFERENCE:
+{reference_datetime}
+
+Use this current date/time reference to resolve relative temporal expressions in the email such as "today", "tomorrow", "yesterday", "next Monday", "this Friday", "in two days", or "next week".
+When a relative date/time can be reliably resolved, output the corresponding absolute date/time rather than null.
+Preserve the timezone/offset represented by the supplied current date/time when producing reminder datetimes.
+If the email does not provide enough information to determine an exact time, keep the time as null while still resolving the date when possible.
 
 Return ONLY one valid JSON object. Do not include markdown, commentary, or code fences.
 
@@ -74,6 +87,7 @@ Rules:
 - Use null when a value cannot be determined reliably.
 - Do not turn vague suggestions into confirmed events or deadlines.
 - Preserve the supplied Gmail id and thread_id exactly.
+- Do not assume a reminder time unless the email gives one or a sensible reminder time can be derived from an explicit deadline/event and the current date/time reference.
 
 Email sender: {sender}
 Email subject: {subject}
@@ -125,14 +139,18 @@ Email content:
         result["subject"] = subject
         return result
 
-    def process_emails(self, emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def process_emails(
+        self,
+        emails: List[Dict[str, Any]],
+        current_datetime: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """Process a received account's emails sequentially, one AI request per email."""
         results: List[Dict[str, Any]] = []
 
         for index, email in enumerate(emails, start=1):
             logger.info("Extracting insights for email %d/%d", index, len(emails))
             try:
-                results.append(self.extract_insights(email))
+                results.append(self.extract_insights(email, current_datetime))
             except Exception as exc:
                 logger.error("Failed to process email %d: %s", index, exc)
                 results.append({
