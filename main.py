@@ -14,33 +14,37 @@ from pydantic import BaseModel, EmailStr
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
 
+# Import our custom modules
 from mail_utils.sender import gmail_manager
 from email_utils import email_sender
 from gmail_utils import gmail_fetcher
 from summarizer import email_summarizer
 from email_insights import email_insight_extractor
 
+# Load environment variables
 load_dotenv()
 
+
+# Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Global scheduler
 scheduler = AsyncIOScheduler()
 
-
+# Pydantic models for API
 class EmailRequest(BaseModel):
     name: str
     email: EmailStr
     subject: str
     message: str
 
-
 class EmailResponse(BaseModel):
     success: bool
     message: str
-
 
 class EmailInsightInput(BaseModel):
     id: str
@@ -50,15 +54,19 @@ class EmailInsightInput(BaseModel):
     content: Optional[str] = None
     snippet: Optional[str] = None
 
-
 class ExtractInsightsRequest(BaseModel):
     emails: List[EmailInsightInput]
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Handle application startup and shutdown events."""
+    # Startup
     logger.info("Starting Email Manager application...")
+    
+    # Start the scheduler
     scheduler.start()
+    
+    # Schedule the daily email fetcher
     scheduler.add_job(
         func=daily_email_report_for_multiple_recipients,
         trigger="interval",
@@ -66,9 +74,12 @@ async def lifespan(app: FastAPI):
         id="daily_email_report",
         replace_existing=True
     )
+    
     logger.info("Scheduler started - daily email reports will run every 24 hours")
-
+    
+    # Run once on startup (for testing)
     if os.getenv('DEBUG') == 'True':
+        logger.info("Debug mode - scheduling initial report in 1 minute")
         scheduler.add_job(
             func=daily_email_report_for_multiple_recipients,
             trigger="date",
@@ -76,12 +87,14 @@ async def lifespan(app: FastAPI):
             id="initial_report",
             max_instances=1
         )
-
+    
     yield
+    
+    # Shutdown
     logger.info("Shutting down Email Manager application...")
     scheduler.shutdown()
 
-
+# Create FastAPI app
 app = FastAPI(
     title="Email Manager API",
     description="FastAPI Email Automation App with Gmail fetching and LLM summarization",
@@ -89,6 +102,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -97,9 +111,9 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-
 @app.get("/")
 async def root() -> Dict[str, Any]:
+    """Root endpoint with API information."""
     return {
         "message": "Email Manager API",
         "version": "1.0.0",
@@ -111,9 +125,9 @@ async def root() -> Dict[str, Any]:
         }
     }
 
-
 @app.get("/health")
 async def health_check() -> Dict[str, Any]:
+    """Health check endpoint."""
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
@@ -124,9 +138,9 @@ async def health_check() -> Dict[str, Any]:
         }
     }
 
-
 @app.get("/status")
 async def get_status() -> Dict[str, Any]:
+    """Get application status and configuration."""
     return {
         "scheduler_running": scheduler.running,
         "scheduled_jobs": [
@@ -141,7 +155,6 @@ async def get_status() -> Dict[str, Any]:
         "llm_available": email_summarizer.is_available(),
         "email_insights_available": email_insight_extractor.is_available()
     }
-
 
 @app.post("/extract-insights-from-emails/")
 async def extract_insights_from_emails(request: ExtractInsightsRequest) -> Dict[str, Any]:
@@ -158,11 +171,21 @@ async def extract_insights_from_emails(request: ExtractInsightsRequest) -> Dict[
     results = email_insight_extractor.process_emails(emails)
     return {"emails": results}
 
-
 @app.post("/send-email/", response_model=EmailResponse)
 async def send_email(email_request: EmailRequest) -> EmailResponse:
+    """
+    Send an email using the configured SMTP settings.
+    
+    Args:
+        email_request: Email data including recipient, subject, and body
+        
+    Returns:
+        EmailResponse: Success/failure response
+    """
     try:
-        logger.info(f"Received email from {email_request.email}")
+        logger.info(f"Received email  from {email_request.email}")
+        
+        # Send email using template
         result = email_sender.send_email(
             to_email="inimfonebong001@gmail.com",
             subject=email_request.subject,
@@ -175,73 +198,105 @@ async def send_email(email_request: EmailRequest) -> EmailResponse:
                 "name": email_request.name,
             }
         )
+        
         if result["success"]:
             return EmailResponse(success=True, message=result["message"])
-        raise HTTPException(status_code=500, detail=result["message"])
-    except HTTPException:
-        raise
+        else:
+            raise HTTPException(status_code=500, detail=result["message"])
+            
     except Exception as e:
         logger.error(f"Error in send_email endpoint: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.get("/trigger-report/")
 async def trigger_manual_report() -> Dict[str, Any]:
+    """
+    Manually trigger the daily email report.
+    Useful for testing and debugging.
+    """
     try:
         logger.info("Manual report trigger requested")
         await daily_email_report_for_multiple_recipients()
-        return {"success": True, "message": "Report generation triggered successfully"}
+        return {
+            "success": True,
+            "message": "Report generation triggered successfully"
+        }
     except Exception as e:
         logger.error(f"Error triggering manual report: {e}")
         raise HTTPException(status_code=500, detail=f"Error triggering report: {str(e)}")
 
-
 async def daily_email_report(recipient_email: str, email_password: str):
+    """
+    Scheduled function to fetch emails, summarize them, and send a report.
+    
+    Args:
+        recipient_email: Email address to send the report to (also used for fetching emails)
+        email_password: Password/app password for the email account
+    """
     try:
         logger.info(f"Starting daily email report generation for {recipient_email}...")
+        
+        # Set credentials for email sender and Gmail manager
         email_sender.set_credentials(recipient_email, email_password)
         gmail_manager.set_credentials(recipient_email, email_password)
+        
+        # Fetch recent emails from Gmail
         logger.info("Fetching emails from Gmail...")
         emails = gmail_manager.fetch_recent_emails(hours=24)
-
+        
         if not emails:
             logger.info("No emails found in the last 24 hours")
             summaries = []
         else:
             logger.info(f"Found {len(emails)} emails, starting summarization...")
             summaries = email_summarizer.summarize_emails_batch(emails)
-
         report_data = {
             "date": datetime.utcnow().strftime("%B %d, %Y"),
             "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
             "total_emails": len(emails),
             "summaries": summaries
         }
+        
         logger.info(f"Sending report to {recipient_email}")
         result = email_sender.send_html_report(recipient_email, report_data)
+        
         if result["success"]:
             logger.info(f"Daily email report sent successfully to {recipient_email}")
         else:
             logger.error(f"Failed to send daily report to {recipient_email}: {result['message']}")
+            
     except Exception as e:
         logger.error(f"Error in daily_email_report for {recipient_email}: {e}")
 
-
 async def daily_email_report_for_multiple_recipients():
-    recipients = ["inimfonebong001@gmail.com", "ebonginimfon8@gmail.com"]
+    """
+    Send daily email reports to multiple recipients.
+    Each recipient gets their own report using their individual credentials.
+    """
+    recipients = ["inimfonebong001@gmail.com", "ebonginimfon8@gmail.com"] #"inimfonebong2023@gmail.com"
     for recipient in recipients:
         username = recipient.split("@")[0].upper()
         password = os.getenv(f"{username}_PASSWORD")
+        
         if not password:
             logger.error(f"No password found for {recipient} (env var: {username}_PASSWORD). Skipping.")
             continue
+        
         await daily_email_report(recipient, password)
-
 
 if __name__ == "__main__":
     import uvicorn
+    
+    # Configuration
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
     debug = os.getenv("DEBUG", "True").lower() == "true"
+    
     logger.info(f"Starting server on {host}:{port}")
-    uvicorn.run("main:app", host=host, port=port, reload=debug, log_level="info")
+    uvicorn.run(
+        "main:app",
+        host=host,
+        port=port,
+        reload=debug,
+        log_level="info"
+    )
