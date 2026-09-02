@@ -5,7 +5,7 @@ Main application with API endpoints and scheduled tasks.
 import os
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -19,6 +19,7 @@ from mail_utils.sender import gmail_manager
 from email_utils import email_sender
 from gmail_utils import gmail_fetcher
 from summarizer import email_summarizer
+from email_insights import email_insight_extractor
 
 # Load environment variables
 load_dotenv()
@@ -44,6 +45,17 @@ class EmailRequest(BaseModel):
 class EmailResponse(BaseModel):
     success: bool
     message: str
+
+class EmailInsightInput(BaseModel):
+    id: str
+    thread_id: Optional[str] = None
+    sender: Optional[str] = None
+    subject: Optional[str] = None
+    content: Optional[str] = None
+    snippet: Optional[str] = None
+
+class ExtractInsightsRequest(BaseModel):
+    emails: List[EmailInsightInput]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -96,7 +108,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"]
 )
 
 @app.get("/")
@@ -107,6 +119,7 @@ async def root() -> Dict[str, Any]:
         "version": "1.0.0",
         "endpoints": {
             "send_email": "/send-email/",
+            "extract_insights_from_emails": "/extract-insights-from-emails/",
             "health": "/health",
             "status": "/status"
         }
@@ -120,7 +133,8 @@ async def health_check() -> Dict[str, Any]:
         "timestamp": datetime.utcnow().isoformat(),
         "services": {
             "email_sender": bool(email_sender.email_address and email_sender.email_password),
-            "summarizer": email_summarizer.is_available()
+            "summarizer": email_summarizer.is_available(),
+            "email_insights": email_insight_extractor.is_available()
         }
     }
 
@@ -138,8 +152,24 @@ async def get_status() -> Dict[str, Any]:
             for job in scheduler.get_jobs()
         ],
         "email_configured": bool(email_sender.email_address),
-        "llm_available": email_summarizer.is_available()
+        "llm_available": email_summarizer.is_available(),
+        "email_insights_available": email_insight_extractor.is_available()
     }
+
+@app.post("/extract-insights-from-emails/")
+async def extract_insights_from_emails(request: ExtractInsightsRequest) -> Dict[str, Any]:
+    """Receive one account's emails and send them to the AI one at a time."""
+    if not email_insight_extractor.is_available():
+        raise HTTPException(status_code=503, detail="AI service is not available")
+
+    if not request.emails:
+        return {"emails": []}
+
+    emails = [email.model_dump() for email in request.emails]
+    logger.info("Received %d emails for sequential insight extraction", len(emails))
+
+    results = email_insight_extractor.process_emails(emails)
+    return {"emails": results}
 
 @app.post("/send-email/", response_model=EmailResponse)
 async def send_email(email_request: EmailRequest) -> EmailResponse:
