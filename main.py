@@ -55,6 +55,7 @@ class EmailInsightInput(BaseModel):
     snippet: Optional[str] = None
 
 class ExtractInsightsRequest(BaseModel):
+    current_datetime: Optional[str] = None
     emails: List[EmailInsightInput]
 
 @asynccontextmanager
@@ -168,7 +169,10 @@ async def extract_insights_from_emails(request: ExtractInsightsRequest) -> Dict[
     emails = [email.model_dump() for email in request.emails]
     logger.info("Received %d emails for sequential insight extraction", len(emails))
 
-    results = email_insight_extractor.process_emails(emails)
+    results = email_insight_extractor.process_emails(
+        emails,
+        current_datetime=request.current_datetime,
+    )
     return {"emails": results}
 
 @app.post("/send-email/", response_model=EmailResponse)
