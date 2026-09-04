@@ -5,6 +5,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
+from email_insight_schema import EmailInsight
 from groq_model_manager import GroqModelManager
 
 logger = logging.getLogger(__name__)
@@ -12,19 +13,6 @@ logger = logging.getLogger(__name__)
 
 class EmailInsightExtractor:
     """Extract structured executive-assistant insights from one email at a time."""
-
-    REQUIRED_FIELDS = (
-        "id",
-        "thread_id",
-        "sender",
-        "subject",
-        "is_important",
-        "summary",
-        "events",
-        "actions",
-        "deadlines",
-        "reminders",
-    )
 
     def __init__(self) -> None:
         self.groq_key = os.getenv("GROQ_API_KEY")
@@ -41,30 +29,27 @@ class EmailInsightExtractor:
             logger.error("Failed to initialize Groq model manager: %s", exc)
 
     def _validate_response(self, response: Any) -> Dict[str, Any]:
-        """Parse and validate a model response before it is accepted."""
+        """Parse JSON, validate the complete contract, and return normalized data."""
         raw_output = (response.choices[0].message.content or "").strip()
         try:
-            result = json.loads(raw_output)
+            raw_result = json.loads(raw_output)
         except json.JSONDecodeError as exc:
             raise ValueError("AI returned invalid JSON") from exc
 
-        if not isinstance(result, dict):
-            raise ValueError("AI response must be a JSON object")
+        try:
+            validated = EmailInsight.model_validate(raw_result)
+        except Exception as exc:
+            logger.error("AI response failed Pydantic validation: %s", exc)
+            raise ValueError("AI response does not match the required email insight schema") from exc
 
-        missing = [field for field in self.REQUIRED_FIELDS if field not in result]
-        if missing:
-            raise ValueError(
-                f"AI response missing required fields: {', '.join(missing)}"
-            )
-
-        return result
+        return validated.model_dump(mode="json")
 
     def extract_insights(
         self,
         email: Dict[str, Any],
         current_datetime: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Analyze exactly one email using adaptive model fallback."""
+        """Analyze exactly one email using adaptive model fallback and strict validation."""
         if not self.model_manager:
             raise RuntimeError("Groq AI service is not available")
 
@@ -148,7 +133,9 @@ Email content:
         result["thread_id"] = thread_id
         result["sender"] = sender
         result["subject"] = subject
-        return result
+
+        # Validate once more after restoring trusted source identifiers.
+        return EmailInsight.model_validate(result).model_dump(mode="json")
 
     def process_emails(
         self,
