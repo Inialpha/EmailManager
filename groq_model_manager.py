@@ -2,7 +2,7 @@
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from groq import Groq
 
@@ -32,14 +32,12 @@ class GroqModelManager:
         self.models = list(models or APPROVED_EMAIL_MODELS)
         self.max_model_attempts = max_model_attempts or len(self.models)
         self.cooldowns: Dict[str, float] = {}
-
-        # Disable SDK-level automatic retries so a rate-limited model does not
-        # consume time retrying itself before our fallback router can intervene.
+        # Disable SDK retries so a rate-limited model does not retry itself
+        # before our fallback router can select another approved model.
         self.client = Groq(api_key=api_key, max_retries=0)
 
     @staticmethod
     def _retry_after_seconds(exc: Exception) -> Optional[float]:
-        """Extract Retry-After from a Groq/OpenAI-compatible exception."""
         response = getattr(exc, "response", None)
         headers = getattr(response, "headers", None)
         if headers:
@@ -53,7 +51,6 @@ class GroqModelManager:
 
     @staticmethod
     def _status_code(exc: Exception) -> Optional[int]:
-        """Return an HTTP status code when the SDK exception exposes one."""
         value = getattr(exc, "status_code", None)
         if value is None:
             response = getattr(exc, "response", None)
@@ -71,8 +68,8 @@ class GroqModelManager:
         return self._is_rate_limited(exc) or status in {408, 409, 500, 502, 503, 504}
 
     def _cooldown_model(self, model: str, seconds: float) -> None:
-        # Keep a small safety margin so the next request does not immediately
-        # collide with a limit that has only just reset.
+        # Add a small margin so the next request does not immediately collide
+        # with a limit that has only just reset.
         self.cooldowns[model] = time.monotonic() + max(1.0, seconds + 1.0)
         logger.warning("Model %s cooling down for %.1f seconds", model, seconds)
 
@@ -90,12 +87,16 @@ class GroqModelManager:
             logger.info("All approved Groq models are rate-limited; waiting %.1f seconds", delay)
             time.sleep(delay)
 
-    def create_completion(self, **kwargs: Any) -> Any:
-        """Create a completion, failing over across approved models as needed.
+    def create_completion(
+        self,
+        response_validator: Optional[Callable[[Any], Any]] = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Create a completion and fail over across approved models.
 
-        The caller receives the first successful response. Model failures,
-        including rate limits, are isolated so one exhausted model does not
-        fail the whole email-processing batch.
+        response_validator, when supplied, must raise an exception for an
+        unusable response. Invalid model output therefore also triggers
+        fallback instead of returning bad data to the caller.
         """
         attempted: List[str] = []
         last_error: Optional[Exception] = None
@@ -105,25 +106,22 @@ class GroqModelManager:
             if not available:
                 self._wait_for_earliest_model()
                 available = self._available_models()
-
             if not available:
                 break
 
-            model = available[0]
-            if model in attempted:
-                # All currently available models have already been attempted.
-                remaining = [m for m in available if m not in attempted]
-                if not remaining:
-                    break
-                model = remaining[0]
-
+            model = next((m for m in available if m not in attempted), None)
+            if model is None:
+                break
             attempted.append(model)
+
             request_kwargs = dict(kwargs)
             request_kwargs["model"] = model
-
             logger.info("Trying Groq model %s", model)
+
             try:
                 response = self.client.chat.completions.create(**request_kwargs)
+                if response_validator is not None:
+                    response_validator(response)
                 logger.info("Groq model %s succeeded", model)
                 return response
             except Exception as exc:
@@ -136,12 +134,11 @@ class GroqModelManager:
                     logger.warning(
                         "Groq model %s rate-limited (HTTP %s); switching model",
                         model,
-                        status or "429",
+                        status or 429,
                     )
                     continue
 
                 if self._is_retryable(exc):
-                    # Short cooldown for transient provider failures.
                     self._cooldown_model(model, 2.0)
                     logger.warning(
                         "Transient Groq error from model %s (HTTP %s); switching model: %s",
@@ -152,7 +149,7 @@ class GroqModelManager:
                     continue
 
                 # Authentication/configuration errors are not fixed by changing
-                # models, so fail immediately instead of hiding the root cause.
+                # models, so fail immediately and preserve the root cause.
                 raise
 
         if last_error is not None:
