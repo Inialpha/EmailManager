@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 APPROVED_EMAIL_MODELS: List[str] = [
     "openai/gpt-oss-20b",
     "openai/gpt-oss-120b",
-    "qwen/qwen3.6-27b",
     "qwen/qwen3.8-27b",
+    "openai/gpt-oss-safeguard-20b",
 ]
 
 
