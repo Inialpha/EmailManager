@@ -11,6 +11,10 @@ from groq_model_manager import GroqModelManager
 logger = logging.getLogger(__name__)
 
 
+class EmailInsightExtractionError(RuntimeError):
+    """Raised when an email cannot be analyzed successfully."""
+
+
 class EmailInsightExtractor:
     """Extract structured executive-assistant insights from one email at a time."""
 
@@ -81,7 +85,7 @@ Required JSON structure:
   "sender": {json.dumps(sender)},
   "subject": {json.dumps(subject)},
   "is_important": false,
-  "summary": "",
+  "summary": "<required concise summary>",
   "events": [],
   "actions": [],
   "deadlines": [],
@@ -91,7 +95,7 @@ Required JSON structure:
 Rules:
 - Analyze only this email. Do not invent facts.
 - "is_important" should be true when the email contains information that is materially important to the user's responsibilities, schedule, finances, commitments, travel, appointments, deadlines, or required action.
-- "summary" must be concise and explain the main purpose and important points.
+- "summary" is REQUIRED. It must always be a non-empty, concise explanation of the email main purpose and important points. Never return an empty string, whitespace, null, or omit the field.
 - "events" contains actual or clearly confirmed scheduled events. Each event must use this structure:
   {{"title":"", "date":"YYYY-MM-DD or null", "time":"HH:MM or null", "location":null, "description":""}}
 - "actions" contains things the user is expected or strongly encouraged to do. Each action must use:
@@ -150,20 +154,10 @@ Email content:
             try:
                 results.append(self.extract_insights(email, current_datetime))
             except Exception as exc:
-                logger.error("Failed to process email %d: %s", index, exc)
-                results.append({
-                    "id": email.get("id"),
-                    "thread_id": email.get("thread_id"),
-                    "sender": email.get("sender"),
-                    "subject": email.get("subject") or "No Subject",
-                    "is_important": False,
-                    "summary": "",
-                    "events": [],
-                    "actions": [],
-                    "deadlines": [],
-                    "reminders": [],
-                    "error": "Unable to analyze this email",
-                })
+                logger.error("Failed to process email %d (id=%s): %s", index, email.get("id"), exc)
+                raise EmailInsightExtractionError(
+                    "Failed to analyze email {!r}: {}".format(email.get("id"), exc)
+                ) from exc
 
         return results
 
