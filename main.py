@@ -19,7 +19,7 @@ from mail_utils.sender import gmail_manager
 from email_utils import email_sender
 from gmail_utils import gmail_fetcher
 from summarizer import email_summarizer
-from email_insights import email_insight_extractor
+from email_insights import email_insight_extractor, EmailInsightExtractionError
 
 # Load environment variables
 load_dotenv()
@@ -169,10 +169,15 @@ async def extract_insights_from_emails(request: ExtractInsightsRequest) -> Dict[
     emails = [email.model_dump() for email in request.emails]
     logger.info("Received %d emails for sequential insight extraction", len(emails))
 
-    results = email_insight_extractor.process_emails(
-        emails,
-        current_datetime=request.current_datetime,
-    )
+    try:
+        results = email_insight_extractor.process_emails(
+            emails,
+            current_datetime=request.current_datetime,
+        )
+    except EmailInsightExtractionError as exc:
+        logger.error("AI insight extraction failed; returning an error response: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
     return {"emails": results}
 
 @app.post("/send-email/", response_model=EmailResponse)
