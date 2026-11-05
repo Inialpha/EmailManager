@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class EventInsight(BaseModel):
@@ -49,7 +49,15 @@ class EmailInsight(BaseModel):
     sender: Optional[str] = None
     subject: str
     is_important: bool
-    summary: str
+    summary: str = Field(min_length=1)
+
+    @field_validator("summary")
+    @classmethod
+    def summary_must_not_be_empty(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("summary must be a non-empty string")
+        return value
     events: List[EventInsight] = Field(default_factory=list)
     actions: List[ActionInsight] = Field(default_factory=list)
     deadlines: List[DeadlineInsight] = Field(default_factory=list)
