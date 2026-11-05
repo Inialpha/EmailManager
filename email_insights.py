@@ -91,7 +91,7 @@ Required JSON structure:
 Rules:
 - Analyze only this email. Do not invent facts.
 - "is_important" should be true when the email contains information that is materially important to the user's responsibilities, schedule, finances, commitments, travel, appointments, deadlines, or required action.
-- "summary" must be concise and explain the main purpose and important points.
+- "summary" must be concise and explain the main purpose and important points. 
 - "events" contains actual or clearly confirmed scheduled events. Each event must use this structure:
   {{"title":"", "date":"YYYY-MM-DD or null", "time":"HH:MM or null", "location":null, "description":""}}
 - "actions" contains things the user is expected or strongly encouraged to do. Each action must use:
@@ -124,6 +124,7 @@ Email content:
             temperature=0.2,
             max_completion_tokens=1200,
             stream=False,
+            reasoning_effort="low",
         )
 
         result = self._validate_response(response)
