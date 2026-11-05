@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 
 
 APPROVED_EMAIL_MODELS: List[str] = [
-    "openai/gpt-oss-20b",
     "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
 ]
 
 
